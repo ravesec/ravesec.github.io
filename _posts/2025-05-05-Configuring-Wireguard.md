@@ -1,8 +1,10 @@
 ---
-title: Title of my Post 😕
+title: Configuring the Cisco Switch
 date: 2025-05-05 07:30:00 -0500
-categories: [test_category, cat_2]
-tags: tag1, tag2, capstone
+description: test description
+author: raven
+categories: [net399-capstone]
+tags: net399-capstone
 ---
 # Header 1
 
