@@ -97,7 +97,7 @@ For the network settings, I will attach this VM to my Trusted Servers network (V
 
 ## Installing Debian
 
-Debian was installed with the following settings:
+Debian was installed headless and with the following settings:
 ```text
 IP Address: 192.168.103.200
 Netmask: 255.255.255.0
@@ -106,5 +106,134 @@ Nameserver: 192.168.103.5
 Hostname: grafana
 Domain: dean.lan
 ```
+## Installing Grafana
+
+![Desktop View](/assets/img/grafana-vm-shell.png)
+_A shell on the new Grafana VM._
+
+Now that we have access to a shell, we can start the installation process by following the offical [installation instructions](https://grafana.com/docs/grafana/latest/setup-grafana/installation/debian/) for Debian.
+
+### Step 1: Installing packages
+
+```bash
+sudo apt-get install -y apt-transport-https software-properties-common wget
+```
+
+### Step 2: Import the GPG key
+
+```bash
+sudo mkdir -p /etc/apt/keyrings/
+wget -q -O - https://apt.grafana.com/gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/grafana.gpg > /dev/null
+```
+
+### Step 3: Add the repository, Update the list of available Packages and Install the latest OSS release of Grafana
+
+The installation guide gives instructions for adding the stable and the beta repository for Grafana as well as installing the enterprise version of Grafana. For this install I will choose the stable OSS release.
+
+```bash
+# Add the repository for stable releases
+echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" | sudo tee -a /etc/apt/sources.list.d/grafana.list
+
+# Update the list of available packages
+sudo apt-get update
+
+# Install the latest OSS release of Grafana
+sudo apt-get install grafana
+```
+
+## Setting up the Grafana Server
+### Relevant Links
+https://grafana.com/docs/grafana/latest/setup-grafana/start-restart-grafana/
+https://grafana.com/docs/grafana/latest/setup-grafana/configure-grafana/
 
 
+Next we will start the server and configure it to start at boot with systemd.
+
+### Step 1: Start the server and confirm that it is running
+
+```bash
+# Start the service
+sudo systemctl daemon-reload
+sudo systemctl start grafana-server
+
+# Verify that the service is running
+sudo systemctl status grafana-server
+```
+
+![Desktop View](/assets/img/grafana-service-is-running.png)
+_Output showing the status of grafana-server._
+
+### Step 2: Serve Grafana on a port less than 1024 (Optional)
+
+By default, the Grafana server listens on port 3000. Later I will configure the server to listen on port 443, so I will need to add a systemd unit override to grant the CAP_NET_BIND_SERVICE capability.
+
+```bash
+# Edit the service
+sudo systemctl edit grafana-server.service
+```
+
+```ini
+[Service]
+# Give the CAP_NET_BIND_SERVICE capability
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+# A private user cannot have process capabilities on the host's user
+# namespace and thus CAP_NET_BIND_SERVICE has no effect.
+PrivateUsers=false
+```
+
+```bash
+# Restart the Grafana server
+sudo systemctl restart grafana-server
+```
+
+### Step 3: Configure Grafana
+
+Next, I will configure some settings for the Grafana instance. My Grafana configuration file is located at `/etc/grafana/grafana.ini`. All values in this file have default values, so I only need to uncomment things I want to change.
+
+The changes I made to the server are below:
+
+```ini
+# /etc/grafana/grafana.ini
+
+[server]
+# Protocol changed to https from http
+protocol = https
+
+# Minimum TLS value is set to TLS1.2
+min_tls_version = "TLS1.2"https://grafana.com/docs/grafana/latest/setup-grafana/configure-grafana/
+
+# The port is changed to 443 from 3000
+http_port = 443
+
+# The FQDN is set
+domain = grafana.dean.lan
+```
+
+Make sure to restart the server to apply the settings and verify that the server is running.
+
+```bash
+sudo systemctl restart grafana-server.service
+sudo systemctl status grafana-server.service
+
+# Ensure Grafana is listening on the correct port
+sudo ss -luntp
+```
+
+We should now be able to access the server over https after accepting the security warning:
+
+![Desktop View](/assets/img/grafana-login-page.png)
+_The Grafana login page._
+
+After logging in with the default credentials `admin:admin`, you will be warned about using default credentials and asked to change them.
+
+![Desktop View](/assets/img/grafana-default-credential-warning.png)
+_Warning about using default credentials._
+
+After changing the credentials (or skipping), you are redirected to the welcome page.
+
+![Desktop View](/assets/img/grafana-welcome-page.png)
+_The Grafana welcome page._
+
+# Customizing Grafana
