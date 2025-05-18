@@ -254,8 +254,8 @@ _dig command showing that proxy.ravenn.net points to Cloudflare's servers_
 
 Now we should be able to navigate to https://proxy.ravenn.net and see that the proxy is working correctly, but the connection is still not secure.
 
-![Desktop View](/assets/img/proxy.ravenn.net.png)
-_https://proxy.ravenn.net successfully redirects to the login page._
+![Desktop View](/assets/img/proxy.ravenn.net-insecure-connection.png)
+_http://proxy.ravenn.net successfully redirects to the login page._
 
 5. Removing direct access to the admin port
 
@@ -320,7 +320,7 @@ We can do this by logging in to the proxy manager and navigating to `Access List
 
 Enter a name for the access list. I chose 'proxy-admin-panel'.
 
-Navigate to the Authorization tab and create a username and password for the access list.
+Navigate to the Authorization tab and create a username and password for the access list. The user and pass should be the same as the credentials you configured for the admin panel, allowing you to log in with HTTP basic authentication.
 
 Navigate to Access and configure access for specific subnets. I just specified 0.0.0.0/0.
 
@@ -345,4 +345,59 @@ _Access to proxy.ravenn.net over HTTPS_
 
 ![Desktop View](/assets/img/proxy.ravenn.net-certificate.png)
 _Certificate provided to proxy.ravenn.net from Let's Encrypt_
+
+
+## Making Grafana Publicly Accessible
+
+Now that everything is configured, making the Grafana instance publicly accessible via https://grafana.ravenn.net is trivial:
+
+1. Create a DNS A record for grafana.ravenn.net
+2. Create a proxy host pointing to the Grafana instance, so that https://grafana.ravenn.net -> https://192.168.103.200
+3. Generate a certificate for grafana.ravenn.net using Let's Encrypt.
+4. Create an access list for https://grafana.ravenn.net
+
+Now, Grafana is accessible to the open internet.
+
+![Desktop View](/assets/img/nginx-proxy-manager-final-proxy-hosts.png)
+_Proxy hosts_
+
+![Desktop View](/assets/img/nginx-proxy-manager-final-ssl;-certificates.png)
+_SSL certificates_
+
+![Desktop View](/assets/img/nginx-proxy-manager-final-access-lists.png)
+_Access Lists_
+
+![Desktop View](/assets/img/grafana.ravenn.net.png)
+_https://grafana.ravenn.net_
+
+Finally, I need to create a read-only user for Grafana. Initially you may think it is strange to allow anyone to access Grafana. Here is a quote from their website:
+
+> Data everyone can see
+Grafana was built on the principle that data should be accessible to everyone in your organization, not just the single Ops person. By democratizing data, Grafana helps to facilitate a culture where data can easily be used and accessed by the people that need it, helping to break down data silos and empower teams.
+
+Of course, the Grafana access here is for capstone purposes only. The credentials will be valid for a limited time (about a month).
+
+### Creating the Read Only user
+
+On the Grafana instance, navigate to `Home > Administration > Users and Access > Users` and create a new user.
+
+I created a new user with the same credentials as the access list on the proxy manager; `capstone:capstone`.
+
+![Desktop View](/assets/img/grafana-view-only-user.png)
+_Creating the capstone user._
+
+By default, the user will be provided with view-only permissions only.
+
+The Grafana instance is now accessible to the public, and a view-only user is able to access it with the credentials `capstone:capstone`.
+
+![Desktop View](/assets/img/signing-in-to-grafana.png)
+_Signing in as the capstone user_
+
+![Desktop View](/assets/img/grafana-view-only-access.png)
+_The main Grafana page with read only permissions._
+
+![Desktop View](/assets/img/grafana-view-only-openwrt-dashboard.png)
+_A dashboard publicly accessible to the view-only user._
+
+# Summary
 
