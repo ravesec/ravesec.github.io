@@ -1,0 +1,732 @@
+---
+title: Network Visualization using Grafana
+date: 2025-05-05 07:30:00 -0500
+description: "Dashboard anything. Observe everything."
+author: raven
+categories: [net399-capstone]
+tags: [net399-capstone, core1]
+---
+
+# Introduction
+
+This posts is part of a larger NET399 capstone course at Eastern Kentucky University and covers "core phase 1" of the project.
+
+The goal of core phase one is to install and configure Grafana to visualize data from critical infrastructure in my homelab and home network by using custom community made dashboards. In this post, I will be configuring dashboards to visualize data from both of my Proxmox servers, my OpenWRT access point, and my Pi-hole DNS server.
+
+# What is Grafana?
+
+Grafana is a data visualization and analytics platform that allows you to query, visualize, and alert on data with the use of customizable dashboards.
+
+Grafana can be used to visualize any kind of data no matter where it is stored. Below are some examples of different dashboards / data visualizations that are possible with Grafana that can be found on the [official website](https://grafana.com/grafana/).
+
+## Dashboard Examples
+
+![Desktop View](/assets/img/grafana-kubernetes-dashboard-example.png)
+_A custom dashboard showing Kubernetes cluster capacity data_
+
+![Desktop View](/assets/img/grafana-home-energy-dashboard-example.png)
+_A custom dashboard showing home energy consumption and cost_
+
+![Desktop View](/assets/img/grafana-website-performance-dashboard-example.png)
+_A custom dashboard showing metrics from a website_
+
+![Desktop View](/assets/img/grafana-team-sprints-dashboard-example.png)
+_A custom dashboard showing team sprints_
+
+![Desktop View](/assets/img/grafana-revenue-dashboard-example.png)
+_A custom dashboard showing revenue predictions for business intelligence_
+
+## Network Visualization
+
+For this project, I will be using Grafana to visualize information from devices and servers in my homelab, including a Palo Alto firewall, a Cisco Switch, and OpenWRT access point, and two Proxmox servers. I will be using [community made dashboards](https://grafana.com/grafana/dashboards/) to achieve this.
+
+# Getting Started
+## Relevant Links
+<https://grafana.com/docs/grafana/latest/setup-grafana/installation/>
+<https://grafana.com/docs/grafana/latest/setup-grafana/installation/debian/>
+
+Grafana offers a forever free plan that lets you host Grafana in the cloud, however I will be self-hosting my instance. Grafana supports Debian, Ubuntu, RHEL/Fedora, SUSE/openSUSE, macOS, and Windows. For my installation I will be using Debian.
+
+## Creating the Virtual Machine
+
+I will be using Proxmox to host Grafana. 
+
+### General
+
+![Desktop View](/assets/img/creating-grafana-vm-general.png)
+
+I am creating my VM on my second proxmox server since it already has the Debian 12 install CD downloaded and ready to use. I named the VM Grafana, assigned it a VM ID of 200, and made it start on boot.
+
+### OS
+
+![Desktop View](/assets/img/creating-grafana-vm-os.png)
+
+For the OS settings, I am using a Debian 12.9 install CD with Linux 6.x-2.6 kernel for the guest OS.
+
+### System
+
+![Dektop View](/assets/img/creating-grafana-vm-system.png)
+
+For the system settings, I enabled the QEMU agent and left all other options default.
+
+### Disks
+
+![Desktop View](/assets/img/creating-grafana-vm-disks.png)
+
+For the disk settings, I gave the VM 32GB of storage to start with, as it can be increased later if needed. Additionally I enabled discard and write-back cache mode for increased VM performance.
+
+### CPU
+
+![Desktop View](/assets/img/creating-grafana-vm-cpu-1.png)
+_Allocation Section_
+
+![Desktop View](/assets/img/creating-grafana-vm-cpu-2.png)
+_Extra CPU Flags Section_
+
+#### Allocation
+Grafana requires a minimum of 1 CPU core. For my install I will give it 4 cores spanning two sockets to match the physical configuration of the host. I also enabled NUMA, and changed the CPU type to "Host".
+
+#### CPU Flags
+Due to the old hardware that my Proxmox server is running on, it is necessary for me to disable the AES instruction set to get VMs to work. I also disable 1GB size pages (pdpe1gb) for increased performance. Everything else can remain default.
+
+### Memory
+
+![Desktop View](/assets/img/creating-grafana-vm-memory.png)
+
+Grafana requires a minimum of 512MB memory. I will enable balooning to save resources, then set the minimum memory to 512MiB and the max memory to 6144MiB.
+
+### Network
+
+![Desktop View](/assets/img/creating-grafana-vm-network.png)
+
+For the network settings, I will attach this VM to my Trusted Servers network (VLAN 40) and disable the firewall. All other settings remain default.
+
+## Installing Debian
+
+Debian was installed headless and with the following settings:
+```text
+IP Address: 192.168.103.200
+Netmask: 255.255.255.0
+Gateway: 192.168.103.254
+Nameserver: 192.168.103.5
+Hostname: grafana
+Domain: dean.lan
+```
+## Installing Grafana
+
+![Desktop View](/assets/img/grafana-vm-shell.png)
+_A shell on the new Grafana VM._
+
+Now that we have access to a shell, we can start the installation process by following the offical [installation instructions](https://grafana.com/docs/grafana/latest/setup-grafana/installation/debian/) for Debian.
+
+### Step 1: Installing packages
+
+```bash
+sudo apt-get install -y apt-transport-https software-properties-common wget
+```
+
+### Step 2: Import the GPG key
+
+```bash
+sudo mkdir -p /etc/apt/keyrings/
+wget -q -O - https://apt.grafana.com/gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/grafana.gpg > /dev/null
+```
+
+### Step 3: Add the repository, Update the list of available Packages and Install the latest OSS release of Grafana
+
+The installation guide gives instructions for adding the stable and the beta repository for Grafana as well as installing the enterprise version of Grafana. For this install I will choose the stable OSS release.
+
+```bash
+# Add the repository for stable releases
+echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" | sudo tee -a /etc/apt/sources.list.d/grafana.list
+
+# Update the list of available packages
+sudo apt-get update
+
+# Install the latest OSS release of Grafana
+sudo apt-get install grafana
+```
+
+## Setting up the Grafana Server
+### Relevant Links
+<https://grafana.com/docs/grafana/latest/setup-grafana/start-restart-grafana/>
+<https://grafana.com/docs/grafana/latest/setup-grafana/configure-grafana/>
+
+
+Next we will start the server and configure it to start at boot with systemd.
+
+### Step 1: Start the server and confirm that it is running
+
+```bash
+# Start the service
+sudo systemctl daemon-reload
+sudo systemctl start grafana-server
+
+# Verify that the service is running
+sudo systemctl status grafana-server
+```
+
+![Desktop View](/assets/img/grafana-service-is-running.png)
+_Output showing the status of grafana-server._
+
+### Step 2: Serve Grafana on a port less than 1024 (Optional)
+
+By default, the Grafana server listens on port 3000. Later I will configure the server to listen on port 443, so I will need to add a systemd unit override to grant the CAP_NET_BIND_SERVICE capability.
+
+```bash
+# Edit the service
+sudo systemctl edit grafana-server.service
+```
+
+```ini
+[Service]
+# Give the CAP_NET_BIND_SERVICE capability
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+# A private user cannot have process capabilities on the host's user
+# namespace and thus CAP_NET_BIND_SERVICE has no effect.
+PrivateUsers=false
+```
+
+```bash
+# Restart the Grafana server
+sudo systemctl restart grafana-server
+```
+
+### Step 3: Configure Grafana
+
+Next, I will configure some settings for the Grafana instance. My Grafana configuration file is located at `/etc/grafana/grafana.ini`. All values in this file have default values, so I only need to uncomment things I want to change.
+
+The changes I made to the server are below:
+
+```ini
+# /etc/grafana/grafana.ini
+
+[server]
+# Protocol changed to https from http
+protocol = https
+
+# Minimum TLS value is set to TLS1.2
+min_tls_version = "TLS1.2"
+
+# The port is changed to 443 from 3000
+http_port = 443
+
+# The FQDN is set
+domain = grafana.dean.lan
+```
+
+Make sure to restart the server to apply the settings and verify that the server is running.
+
+```bash
+sudo systemctl restart grafana-server.service
+sudo systemctl status grafana-server.service
+
+# Ensure Grafana is listening on the correct port
+sudo ss -luntp
+```
+
+We should now be able to access the server over https after accepting the security warning:
+
+![Desktop View](/assets/img/grafana-login-page.png)
+_The Grafana login page._
+
+After logging in with the default credentials `admin:admin`, you will be warned about using default credentials and asked to change them.
+
+![Desktop View](/assets/img/grafana-default-credential-warning.png)
+_Warning about using default credentials._
+
+After changing the credentials (or skipping), you are redirected to the welcome page.
+
+![Desktop View](/assets/img/grafana-welcome-page.png)
+_The Grafana welcome page._
+
+# Setting up Data Sources
+
+Next, we will configure data sources so use for the future dashboards. For this project, the only required data source is Prometheus.
+
+## Relevant Links
+<https://prometheus.io/docs/introduction/overview/>
+
+## Prometheus
+
+### What is Prometheus?
+
+From the [official documentation](<https://prometheus.io/docs/introduction/overview/>):
+Prometheus is an open-source systems monitoring and alerting toolkit. 
+
+Prometheus collects and stores its metrics as time series data, i.e. metrics information is stored with the timestamp at which it was recorded, alongside optional key-value pairs called labels.
+
+Prometheus collects metrics from targets by scraping metrics HTTP endpoints.
+
+I will create a VM for the Prometheus instance.
+
+### Creating the Virtual Machine
+
+The VM is the same as the Grafana VM I created above, so I will skip that.
+
+### Installing Debian
+
+Debian was installed headless and with the following settings:
+```
+IP Address: 192.168.103.201
+Netmask: 255.255.255.0
+Gateway: 192.168.103.254
+Nameserver: 192.168.103.5
+Hostname: prometheus
+Domain: dean.lan
+```
+
+### Installing Prometheus
+
+To install Prometheus, I will follow the official [getting started](https://prometheus.io/docs/prometheus/latest/getting_started/) guide.
+
+#### Downloading and Running Prometheus
+
+```bash
+# Download the latest release of Prometheus from https://prometheus.io/download/
+wget https://github.com/prometheus/prometheus/releases/download/v3.4.0-rc.0/prometheus-3.4.0-rc.0.linux-amd64.tar.gz
+
+# Extract the archive and cd into the new folder
+tar xvzf prometheus-*.tar.gz
+cd prometheus-*
+```
+
+Before Prometheus is started it needs to be configured. According to the guide, we can configure Prometheus to monitor itself as a first step.
+
+##### Configuring Self-Monitoring
+
+Create the following configuration in a file called `prometheus.yml`
+
+```yml
+global:
+  scrape_interval:     15s # By default, scrape targets every 15 seconds.
+
+  # Attach these labels to any time series or alerts when communicating with
+  # external systems (federation, remote storage, Alertmanager).
+  external_labels:
+    monitor: 'codelab-monitor'
+
+# A scrape configuration containing exactly one endpoint to scrape:
+# Here it's Prometheus itself.
+scrape_configs:
+  # The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
+  - job_name: 'prometheus'
+
+    # Override the global default and scrape targets from this job every 5 seconds.
+    scrape_interval: 5s
+
+    static_configs:
+      - targets: ['localhost:9090']
+```
+
+Now we can start Prometheus. After it starts, we can navigate to http://192.168.103.201:9090/targets to see a status page.
+
+```bash
+# Start Prometheus.
+./prometheus --config.file=prometheus.yml
+```
+
+![Desktop View](/assets/img/prometheus-status-page.png)
+_The Prometheus status page showing itself as a target._
+
+#### Add the Prometheus Data Source into Grafana
+
+In order to use the new data source, it must be added to Grafana. I've included the steps below.
+
+1. Inside the Grafana web UI, navigate to `Home > Connections > Data Sources`.
+2. Click the "+ Add new data source" button.
+3. Select Prometheus from the list of supported data sources
+4. Choose an appropriate name for the data source, and supply the connection information. For this data source there is no authentication and TLS certificate validation is skipped.
+5. Scroll to the bottom and click "Save & test". You will see a message saying that the data source has been successfully added.
+
+![Desktop View](/assets/img/configuring-the-prometheus-data-source.png)
+_Data source configuration information has been filled in_
+
+![Desktop View](/assets/img/prometheus-data-source-success-message.png)
+_Grafana reporting that the Prometheus data source was correctly configured and successfully queried._
+
+# Setting up Dashboards
+## Relevant Links
+<https://grafana.com/docs/grafana/latest/getting-started/build-first-dashboard/>
+<https://grafana.com/grafana/dashboards/>
+
+## Proxmox Dashboard
+
+For the Proxmox dashboard, I chose this community made dashboard, [Proxmox via Prometheus](https://grafana.com/grafana/dashboards/10347-proxmox-via-prometheus/)
+
+The dashboard is fed by a Prometheus data source that is populated by a [prometheus-pve-exporter](https://github.com/prometheus-pve/prometheus-pve-exporter) data source.
+
+### Installing the PVE Exporter
+
+Since I have two Promxox servers, I will install the exporter on both instances of Proxmox using this [guide](https://github.com/prometheus-pve/prometheus-pve-exporter/wiki/PVE-Exporter-on-Proxmox-VE-Node-in-a-venv).
+
+First, we need to install the exporter in a venv and verify that it is executable.
+
+```bash
+# Make sure venv is installed
+apt update && apt install python3-venv
+
+# Prepare a new env for the PVE exporter
+python3 -m venv /opt/prometheus-pve-exporter
+
+# Install PVE Exporter into the new env
+/opt/prometheus-pve-exporter/bin/pip install prometheus-pve-exporter
+
+# Check whether pve_exporter is executable
+/opt/prometheus-pve-exporter/bin/pve_exporter --help
+```
+
+![Desktop View](/assets/img/verify-pve-exporter-is-executable.png)
+_Verified that the pve exporter is executable_
+
+Next, we generate the config file. Note that I have already created a user on my proxmox instance with the appropriate permissions (PVEAuditor) and different credentials.
+
+```bash
+mkdir -p /etc/prometheus
+cat <<EOF > /etc/prometheus/pve.yml
+default:
+    user: prometheus@pve
+    password: sEcr3T!
+    verify_ssl: false
+EOF
+```
+
+Now we can configure the exporter to start on boot using systemd.
+
+```bash
+# Create the unit file
+cat <<EOF> /etc/systemd/system/prometheus-pve-exporter.service
+[Unit]
+Description=Prometheus exporter for Proxmox VE
+Documentation=https://github.com/znerol/prometheus-pve-exporter
+
+[Service]
+Restart=always
+User=root
+ExecStart=/opt/prometheus-pve-exporter/bin/pve_exporter --config.file /etc/prometheus/pve.yml
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Reload systemd and start and enable the unit
+systemctl daemon-reload
+systemctl start prometheus-pve-exporter
+```
+
+Now we can see that the service is running and producing output:
+![Desktop View](/assets/img/pve-exporter-service-is-running.png)
+_The exporter service is running successfully_
+
+![Desktop View](/assets/img/pve-exporter-service-output.png)
+_Output produced by the service_
+
+### Configuring Prometheus to Scrape the new Endpoints
+
+On the main Prometheus server, we can edit the `promethus.yml` file and add the new endpoints that were just created. The new file looks like this:
+
+```yml
+global:
+  scrape_interval:     15s # By default, scrape targets every 15 seconds.
+
+  # Attach these labels to any time series or alerts when communicating with
+  # external systems (federation, remote storage, Alertmanager).
+  external_labels:
+    monitor: 'codelab-monitor'
+
+# A scrape configuration containing exactly one endpoint to scrape:
+# Here it's Prometheus itself.
+scrape_configs:
+  # The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
+  - job_name: 'prometheus'
+
+    # Override the global default and scrape targets from this job every 5 seconds.
+    scrape_interval: 5s
+
+    static_configs:
+      - targets: ['localhost:9090']
+  - job_name: 'pve'
+    static_configs:
+      - targets:
+        - 10.10.11.26:9221  # Proxmox VE node with PVE exporter.
+        - 10.10.11.27:9221  # Proxmox VE node with PVE exporter.
+    metrics_path: /pve
+    params:
+      module: [default]
+      cluster: ['1']
+      node: ['1']
+```
+
+Restarting the server, we can check the Promethus status page again. The status page now shows the new endpoints.
+
+![Desktop View](/assets/img/updated-prometheus-status-page.png)
+_Promethus status page showing the new Proxmox endpoints_
+
+### Adding the Dashboard to Grafana
+
+Now that we have everything we need, we can add the [Proxmox via Prometheus](https://grafana.com/grafana/dashboards/10347-proxmox-via-prometheus/) dashboard to Grafana.
+
+To add the dashboard, you can either upload a dashboard JSON file, copy and paste a link to the dashboard into Grafana, or directly copy and paste the JSON into Grafana. The steps I took to add the dashboard are below:
+
+1. Inside the Grafana web UI, navigate to `Home > Dashboards`.
+2. Select the "New" dropdown box, and select "Import"
+3. Paste the link to the dashboard and click "Load".
+4. Grafana will load the dashboard and generate a UID for it.
+5. Select the Prometheus data source we just configured.
+6. Click the "Import" button. Grafana will import the dashboard and take you to it. [Snapshot of the dashboard](https://snapshots.raintank.io/dashboard/snapshot/Tpow0LP1XqnHjP5thzoQuqj7W9TeJjHl)
+
+![Desktop View](/assets/img/prometheus-dashboard-loaded.png)
+_The import dashboard page after loading the dashboard with the link._
+
+![Desktop View](/assets/img/proxmox-dashboard.png)
+_The imported proxmox dashboard._
+
+## OpenWRT Dashboard
+
+For the OpenWRT dashboard, I chose the community made dashboard [OpenWRT](https://grafana.com/grafana/dashboards/18153-asus-openwrt-router/)
+
+The dashboard is fed by a Prometheus instance that is populated by Prometheus node Lua scripts that are installed on the OpenWRt device.
+
+### Installing the Node Exporter Scripts
+
+First we ssh into the OpenWRT device.
+
+![Desktop View](/assets/img/openwrt-shell.png)
+_A root terminal on the OpenWRT device._
+
+Next, we update opkg and install the exporter scripts.
+
+```bash
+# Update the package repository
+opkg update
+
+# Install the exporter scripts
+opkg install prometheus-node-exporter-lua prometheus-node-exporter-lua-nat_traffic prometheus-node-exporter-lua-netstat prometheus-node-exporter-lua-openwrt prometheus-node-exporter-lua-wifi prometheus-node-exporter-lua-wifi_stations
+```
+
+Once the scripts are installed, we need to expose the `x.x.x.x:9100/metrics` endpoint so that the Prometheus server can reach it and fetch the data. The configuration file is located here: `/etc/config/prometheus-node-exporter-lua`
+
+On my device, the interface I will need to listen on is 'MGT'. My final configuration file looks like this:
+
+```
+config prometheus-node-exporter-lua 'main'
+	option listen_port '9100'
+	option listen_interface 'MGT'
+```
+
+Now we restart the exporter and verify that it is working correctly:
+
+```bash
+# restart the service
+/etc/init.d/prometheus-node-exporter-lua restart
+
+# check the status. If successful, returns "running"
+/etc/init.d/prometheus-node-exporter-lua status
+
+# Ensure that the endpoint is exposed
+netstat -luntp | grep "9100"
+```
+
+![Desktop View](/assets/img/openwrt-status-commands-output.png)
+_Verifying the output of the status check commands_
+
+![Desktop View](/assets/img/openwrt-exporter-script-metrics-output.png)
+_Verifying that the exporter scripts are producing output_
+
+### Configuring Prometheus to Scrape the new Endpoint
+
+On the main Prometheus server, we need to edit the `prometheus.yml` file and add the newly exposed endpoint. The updated configuration file looks like this:
+
+```yml
+global:
+  scrape_interval:     15s # By default, scrape targets every 15 seconds.
+
+  # Attach these labels to any time series or alerts when communicating with
+  # external systems (federation, remote storage, Alertmanager).
+  external_labels:
+    monitor: 'codelab-monitor'
+
+# A scrape configuration containing exactly one endpoint to scrape:
+# Here it's Prometheus itself.
+scrape_configs:
+  # The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
+  - job_name: 'prometheus'
+
+    # Override the global default and scrape targets from this job every 5 seconds.
+    scrape_interval: 5s
+
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'pve1'
+    static_configs:
+      - targets:
+        - 10.10.11.26:9221  # Proxmox VE node with PVE exporter.
+        - 10.10.11.27:9221
+    metrics_path: /pve
+    params:
+      module: [default]
+      cluster: ['1']
+      node: ['1']
+
+  - job_name: "OpenWRT"
+    static_configs:
+      - targets: ["10.10.11.29:9100"]
+```
+
+After editing the config file and restarting the server, we can verify that the endpoint is shown on the status page.
+
+![Desktop View](/assets/img/prometheus-openwrt-endpoint-status.png)
+_Prometheus status page showing the new OpenWRT endpoint_
+
+### Adding the Dashboard to Grafana
+
+Next, we will add the [OpenWRT Dashboard](https://grafana.com/grafana/dashboards/18153-asus-openwrt-router/) to Grafana. The steps are the same as adding the Proxmox dashboard, so I will skip it. Once the dashboard is imported, we can view the data. You can [view a snapshot of the dashboard here](https://snapshots.raintank.io/dashboard/snapshot/hMbKDilSkwiGalGeq0uLJT0N3ZXYg93r).
+
+![Desktop View](/assets/img/openwrt-dashboard.png)
+_The imported OpenWRT dashboard._
+
+## Pi-hole DNS Dashboard
+
+For the Pi-hole dashboard, I chose the community made dashboard [Pi-hole Exporter](https://grafana.com/grafana/dashboards/10176-pi-hole-exporter/). The dashboard is fed by a Prometheus data source that is populated by [pihole-exporter](https://github.com/eko/pihole-exporter).
+
+### Installing the Pi-hole Exporter
+
+After SSHing into the Pi-hole, we need to download the binary from the github and make sure it is executable. I had to download a previous release of the exporter because the latest version has a bug that doesn't allow you to supply any command line arguments.
+
+```bash
+# Download a working binary of the exporter
+wget https://github.com/eko/pihole-exporter/releases/download/v1.0.1/pihole_exporter-linux-amd64
+
+# Make the binary executable and rename it for ease of use
+chmod +x pihole_exporter-linux-amd64 && mv pihole_exporter-linux-amd64 pihole_exporter
+
+# Test the exporter to verify it is working correctly
+./pihole_exporter-linux-amd64 -pihole_hostname 192.168.103.5 -pihole_password [redacted]
+```
+
+![Desktop View](/assets/img/pihole-exporter-executable-running-example.png)
+_Example output of the executable running_
+
+Now that we have verified the executable is running correctly, we can move the binary and create a systemd unit file to run it on boot.
+
+```bash
+# Move the binary
+sudo mv pihole_exporter /usr/bin/pihole_exporter
+
+# Create the unit file
+sudo vim /etc/systemd/system/pihole-exporter.service
+```
+
+Contents of the systemd unit file:
+```
+[Unit]
+Description=Prometheus exporter for Pi-hole
+Documentation=https://github.com/eko/pihole-exporter
+
+[Service]
+Restart=always
+User=raven
+ExecStart=/usr/bin/pihole_exporter -pihole_hostname 192.168.103.5 -pihole_password [redacted]
+
+[Install]
+WantedBy=multi-user.target
+```
+
+After we create the unit file, we can reload systemd then start, enable, and verify that the service is running.
+
+```bash
+# Reload systemd
+sudo systemctl deamon-reload
+
+# Start the service
+sudo systemctl start pihole-exporter.service
+
+# Check the status of the service
+sudo systemctl status pihole-exporter.service
+
+# Enable the service
+sudo systemctl enable pihole-exporter.service
+
+# Verify that the service is listening on the correct interface
+sudo ss -luntp | grep "9617"
+```
+
+![Dashboard View](/assets/img/pihole-exporter-status-commands.png)
+_Output of status commands showing that the exporter is running successfully_
+
+![Dashboard View](/assets/img/pihole-exporter-metrics.png)
+_Output produced by the exporter service_
+
+### Configuring Prometheus to Scrape the new Endpoint
+
+On the main Prometheus server, we can edit the `prometheus.yml` file and add the new endpoint. Here are the final contents of the config file:
+
+```yml
+global:
+  scrape_interval:     15s # By default, scrape targets every 15 seconds.
+
+  # Attach these labels to any time series or alerts when communicating with
+  # external systems (federation, remote storage, Alertmanager).
+  external_labels:
+    monitor: 'codelab-monitor'
+
+# A scrape configuration containing exactly one endpoint to scrape:
+# Here it's Prometheus itself.
+scrape_configs:
+  # The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
+  - job_name: 'prometheus'
+
+    # Override the global default and scrape targets from this job every 5 seconds.
+    scrape_interval: 5s
+
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'pve1'
+    static_configs:
+      - targets:
+        - 10.10.11.26:9221  # Proxmox VE node with PVE exporter.
+        - 10.10.11.27:9221
+    metrics_path: /pve
+    params:
+      module: [default]
+      cluster: ['1']
+      node: ['1']
+
+  - job_name: "OpenWRT"
+    static_configs:
+      - targets: ["10.10.11.29:9100"]
+
+  - job_name: "pihole"
+    static_configs:
+      - targets: ["192.168.103.5:9617"]
+```
+
+After restarting the Prometheus server, we can see that the new endpoint is up and healthy:
+
+![Dashboard View](/assets/img/pihole-prometheus-endpoint.png)
+_Prometheus status page showing the new pihole endpoint_
+
+### Adding the Dashboard to Grafana
+
+Next we'll add the [Pi-hole Exporter dashboard](https://grafana.com/grafana/dashboards/10176-pi-hole-exporter/) to Grafana. The steps are the same as the previous two dashboards so I will skip going over that step. Once the dashboard is imported we can view the data. You can [view a snapshot of the dashboard here](https://snapshots.raintank.io/dashboard/snapshot/efOOLmls7Vpkuj8FIpJyqTHc34IjXqSy).
+
+![Dashboard View](/assets/img/pihole-exporter-dashboard.png)
+_The imported Pi-hole Exporter dashboard._
+
+# Summary
+
+In this post, I created a virtualized Grafana instance using Proxmox and a virtualized Prometheus instance to use as the data source for Grafana.
+
+Prometheus exporters were installed on each device in order to expose endpoints for data collection, and the main Prometheus instance was configured to scrape data from those endpoints.
+
+The Prometheus data source was added to Grafana, and dashboards were imported to visualize the scraped data.
+
+Three dashboards were created, and snapshots were uploaded to the cloud for viewing:
+1. [Proxmox via Prometheus](https://snapshots.raintank.io/dashboard/snapshot/Tpow0LP1XqnHjP5thzoQuqj7W9TeJjHl)
+2. [OpenWRT](https://snapshots.raintank.io/dashboard/snapshot/hMbKDilSkwiGalGeq0uLJT0N3ZXYg93r)
+3. [Pi-hole Exporter](https://snapshots.raintank.io/dashboard/snapshot/efOOLmls7Vpkuj8FIpJyqTHc34IjXqSy)
+
