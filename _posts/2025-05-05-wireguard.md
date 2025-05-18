@@ -207,4 +207,142 @@ _The Ngnix Proxy Manager Login page._
 
 ### Configuration
 
+Now we can access the admin panel of the proxy manager, but access is insecure. It can be accessed publicly over http with no authorization. We can fix this by proxying the service itself, removing public access to the admin port and creating an access list.
+
+#### Creating a Proxy Host
+
+After logging in to the proxy manager, you will see the main landing page:
+
+![Desktop View](/assets/img/nginx-proxy-manager-landing-page.png)
+_Nginx Proxy Manager landing page._
+
+Here, we can configure Proxy Hosts, Redirection Hosts, Streams, and 404 Hosts. In this post I will only be worrying about proxy hosts.
+
+1. Navigate to the proxy hosts page and clock Add Proxy Host. You will see a new proxy host creation window.
+
+![Desktop View](/assets/img/nginx-proxy-manager-new-proxy-host-window.png)
+_Window for creating a new proxy host._
+
+For the domain name, I chose proxy.ravenn.net. The admin page is hosted on port 81 inside the docker container, so for the forward hostname / IP I set 127.0.0.1:81. For now, leave the Access List setting as 'Publicly Accessible'.
+
+![Desktop View](/assets/img/nginx-proxy.ravenn.net-proxy-host-settings.png)
+_Settings for proxy host proxy.ravenn.net_
+
+Hit save.
+
+2. Create the DNS entry in Cloudflare
+
+Next I navigated to Cloudflare's dashboard for managing the ravenn.net domain.
+
+I created a new DNS address record pointing to proxy.ravenn.net. By using the proxy option, traffic will be first proxied through Cloudflare automatically providing an SSL certificate for proxy.ravenn.net.
+
+Unfortunately, proxying traffic through cloudflare can cause http basic authentication to fail, so we will use another method for SSL access later on.
+
+![Desktop View](/assets/img/cloudflare-dns-record-proxy.ravenn.net.png)
+_A Record for proxy.ravenn.net_
+
+After a minute or so, we can validate that the DNS record exists:
+
+```bash
+dig proxy.ravenn.net
+```
+
+![Desktop View](/assets/img/output-of-dig-command.png)
+_dig command showing that proxy.ravenn.net points to Cloudflare's servers_
+
+4. Verifying the Setup
+
+Now we should be able to navigate to https://proxy.ravenn.net and see that the proxy is working correctly, but the connection is still not secure.
+
+![Desktop View](/assets/img/proxy.ravenn.net.png)
+_https://proxy.ravenn.net successfully redirects to the login page._
+
+5. Removing direct access to the admin port
+
+Currently the admin page can still be directly accessed over port 8081. We can fix that by taking down the docker container, commenting out the line that exposes the admin page, and bringing it back up.
+
+```bash
+# Navigate to the folder containing the proxy manager files
+cd ~/nginx-proxy-manager
+
+# Take down the container
+docker compose down
+
+# Edit the container's compose file
+vim docker-compose.yml
+```
+
+Comment out the line that exposes port 81 on the docker container to port 8081 on the VPS.
+
+```yml
+services:
+  app:
+    image: 'jc21/nginx-proxy-manager:latest'
+    restart: unless-stopped
+    ports:
+      # These ports are in format <host-port>:<container-port>
+      - '80:80' # Public HTTP Port
+      - '443:443' # Public HTTPS Port
+      # - '8081:81' # Admin Web Port
+      # Add any other Stream port you want to expose
+      # - '21:21' # FTP
+
+    environment:
+      # Uncomment this if you want to change the location of
+      # the SQLite DB file within the container
+      # DB_SQLITE_FILE: "/data/database.sqlite"
+
+      # Uncomment this if IPv6 is not enabled on your host
+      DISABLE_IPV6: 'true'
+
+    volumes:
+      - ./data:/data
+      - ./letsencrypt:/etc/letsencrypt
+```
+
+```bash
+# Bring the service back uo
+docker compose up -d
+```
+
+Now only ports 80 and 443 are exposed, and the admin panel is only served over localhost on Docker.
+
+When we try to navigate to http://proxy.ravenn.net:8081, the page will never load. The unsecure connection message is just due to caching by Cloudflare.
+
+![Desktop View](/assets/img/nginx-proxy-manager-direct-access-blocked.png)
+_Admin page is no longer directly accessible over port 8081._
+
+6. Configuring Authorization for the Proxy Manager
+
+The final step in securing access to the admin page is to create an access list so that navigating to https://proxy.ravenn.net requires a password.
+
+We can do this by logging in to the proxy manager and navigating to `Access Lists`. Once we are there, a new access list can be created by pressing the 'Add Access List' button.
+
+Enter a name for the access list. I chose 'proxy-admin-panel'.
+
+Navigate to the Authorization tab and create a username and password for the access list.
+
+Navigate to Access and configure access for specific subnets. I just specified 0.0.0.0/0.
+
+![Desktop View](/assets/img/nginx-proxy-manager-admin-access-list.png)
+_Newly Created Access List_
+
+7. Go back and apply the new access list to the proxy host.
+
+Once the access list is applied, you are immediately greeted with a basic http authentication prompt.
+
+![Desktop View](/assets/img/nginx-proxy-manager-auth-page.png)
+_Sign in request._
+
+8. Requesting a Certificate from Let's Encrypt
+
+Finally I can request my own certificate by using Let's Encrypt. Navigate to the Proxy Host and go to the SSL tab. Under SSL certificate, choose "Request a new SSL certificate". You will be asked to provide an email address and agree to the Let's Encrypt terms of service. Once you do that, hit save, and after a few moments Let's Encrypt will grant a new SSL certificate.
+
+Now the SSL certificate shows up under the SSL Certificates tab in the proxy manager, and the connection is secured.
+
+![Desktop View](/assets/img/proxy.ravenn.net-secure-connection.png)
+_Access to proxy.ravenn.net over HTTPS_
+
+![Desktop View](/assets/img/proxy.ravenn.net-certificate.png)
+_Certificate provided to proxy.ravenn.net from Let's Encrypt_
 
