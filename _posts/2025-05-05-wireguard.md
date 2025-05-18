@@ -101,7 +101,7 @@ PersistentKeepAlive = 25
 
 The wg0 interface configuration on the container enables SNAT translation when the interface comes up, so that on my private network all traffic coming from the outside appears as normal traffic from the container. This is important so that exposed services will know how to send traffic back to the source.
 
-After the configuration files are creafted on both servers, the Wireguard interfaces can be brought up:
+After the configuration files are created on both servers, the Wireguard interfaces can be brought up:
 
 ### Starting Interfaces and Verifying Connectivity
 
