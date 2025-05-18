@@ -1,7 +1,7 @@
 ---
 title: Exposing Homelab Services to the Internet
 date: 2025-05-05 07:30:00 -0500
-description: Using Wireguard to configure public access to services.
+description: Using Wireguard, Nginx and Cloudflare to configure public access to services.
 author: raven
 categories: [net399-capstone]
 tags: [net399-capstone, extension]
@@ -401,3 +401,4 @@ _A dashboard publicly accessible to the view-only user._
 
 # Summary
 
+In this post, I configured my Grafana instance to be publicly accessible to the internet. I went over creating DNS records in Cloudflare, installing Nginx Proxy Manager using Docker and configuring it, and creating a Wireguard tunnel to expose internal routes to public facing servers.
