@@ -9,11 +9,15 @@ tags: [net399-capstone, core2]
 
 # Introduction
 
-This posts is part of a larger NET399 capstone course at Eastern Kentucky University and covers "core phase 2" of the project.
+This post is part of a larger NET399 capstone course at Eastern Kentucky University and covers "core phase 2" of the project.
 
 In the [previous post](https://ravesec.github.io/posts/grafana), I installed and configured Grafana and Prometheus to visualize metric data from two Proxmox servers, an OpenWRT access point, and a Pi-hole DNS server.
 
 The goal of core phase two is to configure Grafana to send alerts based on metric data from critical infrastructure in my homelab. Alerts can be sent to many services by using webhooks, and in this post I will be using Discord webhooks to receive alert messages from my Pi-hole DNS server metrics.
+
+## Relevant Links
+<https://grafana.com/docs/grafana/latest/alerting/>
+<https://grafana.com/docs/grafana/latest/alerting/configure-notifications/manage-contact-points/integrations/configure-discord/>
 
 # Getting Started with Alerting using Grafana
 
@@ -124,7 +128,7 @@ After a few seconds, another message is sent to the Discord showing that the fir
 
 # Summary
 
-
+In this post, I used Discord and Grafana to set up alert notifications for services in my homelab. An app and webhook link was created on Discord and set as a contact point on my Grafana instance. Then, I set up an alert rule to 
 
 
 
