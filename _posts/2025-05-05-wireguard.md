@@ -218,7 +218,7 @@ _Nginx Proxy Manager landing page._
 
 Here, we can configure Proxy Hosts, Redirection Hosts, Streams, and 404 Hosts. In this post I will only be worrying about proxy hosts.
 
-1. Navigate to the proxy hosts page and clock Add Proxy Host. You will see a new proxy host creation window.
+1. Navigate to the proxy hosts page and click Add Proxy Host. You will see a new proxy host creation window.
 
 ![Desktop View](/assets/img/nginx-proxy-manager-new-proxy-host-window.png)
 _Window for creating a new proxy host._
