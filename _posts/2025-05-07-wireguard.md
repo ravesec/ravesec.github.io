@@ -1,6 +1,6 @@
 ---
 title: Exposing Homelab Services to the Internet
-date: 2025-05-05 07:30:00 -0500
+date: 2025-05-07 07:30:00 -0500
 description: Using Wireguard, Nginx and Cloudflare to configure public access to services.
 author: raven
 categories: [net399-capstone]
